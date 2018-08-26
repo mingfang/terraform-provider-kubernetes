@@ -1,9 +1,11 @@
 package kubernetes
 
-import "github.com/hashicorp/terraform/helper/schema"
+import (
+	"github.com/hashicorp/terraform/helper/schema"
+)
 
-func podSpecFields() map[string]*schema.Schema {
-	return map[string]*schema.Schema{
+func podSpecFields(isUpdatable bool) map[string]*schema.Schema {
+	s := map[string]*schema.Schema{
 		"active_deadline_seconds": {
 			Type:         schema.TypeInt,
 			Optional:     true,
@@ -15,7 +17,16 @@ func podSpecFields() map[string]*schema.Schema {
 			Optional:    true,
 			Description: "List of containers belonging to the pod. Containers cannot currently be added or removed. There must be at least one container in a Pod. Cannot be updated. More info: http://kubernetes.io/docs/user-guide/containers",
 			Elem: &schema.Resource{
-				Schema: containerFields(),
+				Schema: containerFields(isUpdatable, false),
+			},
+		},
+		"init_container": {
+			Type:        schema.TypeList,
+			Optional:    true,
+			ForceNew:    true,
+			Description: "List of init containers belonging to the pod. Init containers always run to completion and each must complete succesfully before the next is started. More info: https://kubernetes.io/docs/concepts/workloads/pods/init-containers/",
+			Elem: &schema.Resource{
+				Schema: containerFields(isUpdatable, true),
 			},
 		},
 		"dns_policy": {
@@ -156,6 +167,22 @@ func podSpecFields() map[string]*schema.Schema {
 			Elem:        volumeSchema(),
 		},
 	}
+
+	if !isUpdatable {
+		for k, _ := range s {
+			if k == "active_deadline_seconds" {
+				// This field is always updatable
+				continue
+			}
+			if k == "container" {
+				// Some fields are always updatable
+				continue
+			}
+			s[k].ForceNew = true
+		}
+	}
+
+	return s
 }
 
 func volumeSchema() *schema.Resource {
@@ -361,6 +388,43 @@ func volumeSchema() *schema.Resource {
 		MaxItems:    1,
 		Elem: &schema.Resource{
 			Schema: map[string]*schema.Schema{
+				"default_mode": {
+					Type:         schema.TypeInt,
+					Description:  "Optional: mode bits to use on created files by default. Must be a value between 0 and 0777. Defaults to 0644. Directories within the path are not affected by this setting. This might be in conflict with other options that affect the file mode, like fsGroup, and the result can be other mode bits set.",
+					Optional:     true,
+					Default:      0644,
+					ValidateFunc: validateModeBits,
+				},
+				"items": {
+					Type:        schema.TypeList,
+					Description: "If unspecified, each key-value pair in the Data field of the referenced Secret will be projected into the volume as a file whose name is the key and content is the value. If specified, the listed keys will be projected into the specified paths, and unlisted keys will not be present. If a key is specified which is not present in the Secret, the volume setup will error unless it is marked optional. Paths must be relative and may not contain the '..' path or start with '..'.",
+					Optional:    true,
+					Elem: &schema.Resource{
+						Schema: map[string]*schema.Schema{
+							"key": {
+								Type:        schema.TypeString,
+								Optional:    true,
+								Description: "The key to project.",
+							},
+							"mode": {
+								Type:        schema.TypeInt,
+								Optional:    true,
+								Description: "Optional: mode bits to use on this file, must be a value between 0 and 0777. If not specified, the volume defaultMode will be used. This might be in conflict with other options that affect the file mode, like fsGroup, and the result can be other mode bits set.",
+							},
+							"path": {
+								Type:         schema.TypeString,
+								Optional:     true,
+								ValidateFunc: validateAttributeValueDoesNotContain(".."),
+								Description:  "The relative path of the file to map the key to. May not be an absolute path. May not contain the path element '..'. May not start with the string '..'.",
+							},
+						},
+					},
+				},
+				"optional": {
+					Type:        schema.TypeBool,
+					Description: "Optional: Specify whether the Secret or it's keys must be defined.",
+					Optional:    true,
+				},
 				"secret_name": {
 					Type:        schema.TypeString,
 					Description: "Name of the secret in the pod's namespace to use. More info: http://kubernetes.io/docs/user-guide/volumes#secrets",

@@ -4,7 +4,7 @@ import (
 	"strconv"
 
 	"github.com/hashicorp/terraform/helper/schema"
-	"k8s.io/kubernetes/pkg/api/v1"
+	"k8s.io/client-go/pkg/api/v1"
 )
 
 // Flatteners
@@ -14,11 +14,18 @@ func flattenPodSpec(in v1.PodSpec) ([]interface{}, error) {
 	if in.ActiveDeadlineSeconds != nil {
 		att["active_deadline_seconds"] = *in.ActiveDeadlineSeconds
 	}
+
 	containers, err := flattenContainers(in.Containers)
 	if err != nil {
 		return nil, err
 	}
 	att["container"] = containers
+
+	initContainers, err := flattenContainers(in.InitContainers)
+	if err != nil {
+		return nil, err
+	}
+	att["init_container"] = initContainers
 
 	att["dns_policy"] = in.DNSPolicy
 
@@ -266,7 +273,7 @@ func flattenConfigMapVolumeSource(in *v1.ConfigMapVolumeSource) []interface{} {
 		for i, v := range in.Items {
 			m := map[string]interface{}{}
 			m["key"] = v.Key
-			m["mode"] = v.Mode
+			m["mode"] = *v.Mode
 			m["path"] = v.Path
 			items[i] = m
 		}
@@ -284,8 +291,27 @@ func flattenEmptyDirVolumeSource(in *v1.EmptyDirVolumeSource) []interface{} {
 
 func flattenSecretVolumeSource(in *v1.SecretVolumeSource) []interface{} {
 	att := make(map[string]interface{})
+	if in.DefaultMode != nil {
+		att["default_mode"] = *in.DefaultMode
+	}
 	if in.SecretName != "" {
 		att["secret_name"] = in.SecretName
+	}
+	if len(in.Items) > 0 {
+		items := make([]interface{}, len(in.Items))
+		for i, v := range in.Items {
+			m := map[string]interface{}{}
+			m["key"] = v.Key
+			if v.Mode != nil {
+				m["mode"] = int(*v.Mode)
+			}
+			m["path"] = v.Path
+			items[i] = m
+		}
+		att["items"] = items
+	}
+	if in.Optional != nil {
+		att["optional"] = *in.Optional
 	}
 	return []interface{}{att}
 }
@@ -309,6 +335,14 @@ func expandPodSpec(p []interface{}) (v1.PodSpec, error) {
 			return obj, err
 		}
 		obj.Containers = cs
+	}
+
+	if v, ok := in["init_container"].([]interface{}); ok && len(v) > 0 {
+		cs, err := expandContainers(v)
+		if err != nil {
+			return obj, err
+		}
+		obj.InitContainers = cs
 	}
 
 	if v, ok := in["dns_policy"].(string); ok {
@@ -340,8 +374,14 @@ func expandPodSpec(p []interface{}) (v1.PodSpec, error) {
 		obj.NodeName = v.(string)
 	}
 
-	if v, ok := in["node_selector"].(map[string]string); ok {
-		obj.NodeSelector = v
+	if v, ok := in["node_selector"].(map[string]interface{}); ok {
+		nodeSelectors := make(map[string]string)
+		for k, v := range v {
+			if val, ok := v.(string); ok {
+				nodeSelectors[k] = val
+			}
+		}
+		obj.NodeSelector = nodeSelectors
 	}
 
 	if v, ok := in["restart_policy"].(string); ok {
@@ -563,8 +603,15 @@ func expandSecretVolumeSource(l []interface{}) *v1.SecretVolumeSource {
 	}
 	in := l[0].(map[string]interface{})
 	obj := &v1.SecretVolumeSource{
-		SecretName: in["secret_name"].(string),
+		DefaultMode: ptrToInt32(int32(in["default_mode"].(int))),
+		SecretName:  in["secret_name"].(string),
+		Optional:    ptrToBool(in["optional"].(bool)),
 	}
+
+	if v, ok := in["items"].([]interface{}); ok && len(v) > 0 {
+		obj.Items = expandKeyPath(v)
+	}
+
 	return obj
 }
 
@@ -679,10 +726,6 @@ func patchPodSpec(pathPrefix, prefix string, d *schema.ResourceData) (PatchOpera
 			ops = append(ops, &ReplaceOperation{
 				Path:  pathPrefix + "/containers/" + strconv.Itoa(i) + "/image",
 				Value: v.Image,
-			})
-			ops = append(ops, &ReplaceOperation{
-				Path:  pathPrefix + "/containers/" + strconv.Itoa(i) + "/name",
-				Value: v.Name,
 			})
 
 		}

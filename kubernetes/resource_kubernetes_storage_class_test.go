@@ -10,8 +10,8 @@ import (
 	"github.com/hashicorp/terraform/helper/resource"
 	"github.com/hashicorp/terraform/terraform"
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	api "k8s.io/kubernetes/pkg/apis/storage/v1"
-	kubernetes "k8s.io/kubernetes/pkg/client/clientset_generated/clientset"
+	kubernetes "k8s.io/client-go/kubernetes"
+	api "k8s.io/client-go/pkg/apis/storage/v1"
 )
 
 func TestAccKubernetesStorageClass_basic(t *testing.T) {
@@ -108,9 +108,10 @@ func TestAccKubernetesStorageClass_importBasic(t *testing.T) {
 			},
 
 			{
-				ResourceName:      resourceName,
-				ImportState:       true,
-				ImportStateVerify: true,
+				ResourceName:            resourceName,
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"metadata.0.resource_version"},
 			},
 		},
 	})
@@ -160,9 +161,10 @@ func TestAccKubernetesStorageClass_importGeneratedName(t *testing.T) {
 			},
 
 			{
-				ResourceName:      resourceName,
-				ImportState:       true,
-				ImportStateVerify: true,
+				ResourceName:            resourceName,
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"metadata.0.resource_version"},
 			},
 		},
 	})

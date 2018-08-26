@@ -14,12 +14,12 @@ Read more at http://blog.kubernetes.io/2017/03/dynamic-provisioning-and-storage-
 
 ## Example Usage
 
-```
+```hcl
 resource "kubernetes_storage_class" "example" {
   metadata {
     name = "terraform-example"
   }
-  provisioner = "kubernetes.io/gce-pd"
+  storage_provisioner = "kubernetes.io/gce-pd"
   parameters {
   	type = "pd-standard"
   }
@@ -32,7 +32,7 @@ The following arguments are supported:
 
 * `metadata` - (Required) Standard storage class's metadata. More info: https://github.com/kubernetes/community/blob/master/contributors/devel/api-conventions.md#metadata
 * `parameters` - (Optional) The parameters for the provisioner that should create volumes of this storage class.
-	Read more about [available parameters](https://kubernetes.io/docs/concepts/storage/persistent-volumes/#parameters).
+	Read more about [available parameters](https://kubernetes.io/docs/concepts/storage/storage-classes/#parameters).
 * `storage_provisioner` - (Required) Indicates the type of the provisioner
 
 ## Nested Blocks

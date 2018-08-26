@@ -1,7 +1,7 @@
 package kubernetes
 
 import (
-	"k8s.io/kubernetes/pkg/api/v1"
+	"k8s.io/client-go/pkg/api/v1"
 
 	"github.com/hashicorp/terraform/helper/schema"
 )
@@ -258,6 +258,9 @@ func flattenPersistentVolumeSpec(in v1.PersistentVolumeSpec) []interface{} {
 	}
 	if in.PersistentVolumeReclaimPolicy != "" {
 		att["persistent_volume_reclaim_policy"] = in.PersistentVolumeReclaimPolicy
+	}
+	if in.StorageClassName != "" {
+		att["storage_class_name"] = in.StorageClassName
 	}
 	return []interface{}{att}
 }
@@ -653,6 +656,9 @@ func expandPersistentVolumeSpec(l []interface{}) (v1.PersistentVolumeSpec, error
 	if v, ok := in["persistent_volume_reclaim_policy"].(string); ok {
 		obj.PersistentVolumeReclaimPolicy = v1.PersistentVolumeReclaimPolicy(v)
 	}
+	if v, ok := in["storage_class_name"].(string); ok {
+		obj.StorageClassName = v
+	}
 	return obj, nil
 }
 
@@ -766,12 +772,26 @@ func patchPersistentVolumeSpec(pathPrefix, prefix string, d *schema.ResourceData
 			Value: expandPersistentVolumeAccessModes(v.List()),
 		})
 	}
-	if d.HasChange(prefix + "access_modes") {
+	if d.HasChange(prefix + "persistent_volume_reclaim_policy") {
 		v := d.Get(prefix + "persistent_volume_reclaim_policy").(string)
 		ops = append(ops, &ReplaceOperation{
 			Path:  pathPrefix + "/persistentVolumeReclaimPolicy",
 			Value: v1.PersistentVolumeReclaimPolicy(v),
 		})
+	}
+	if d.HasChange(prefix + "storage_class_name") {
+		o, n := d.GetChange(prefix + "storage_class_name")
+		if v, ok := o.(string); ok && len(v) > 0 {
+			ops = append(ops, &ReplaceOperation{
+				Path:  pathPrefix + "/storageClassName",
+				Value: n.(string),
+			})
+		} else {
+			ops = append(ops, &AddOperation{
+				Path:  pathPrefix + "/storageClassName",
+				Value: n.(string),
+			})
+		}
 	}
 
 	return ops, nil
@@ -782,204 +802,374 @@ func patchPersistentVolumeSource(pathPrefix, prefix string, d *schema.ResourceDa
 
 	if d.HasChange(prefix + "gce_persistent_disk") {
 		oldIn, newIn := d.GetChange(prefix + "gce_persistent_disk")
-		if v, ok := newIn.([]interface{}); ok && len(v) > 0 {
-			ops = append(ops, &ReplaceOperation{
-				Path:  pathPrefix + "/gcePersistentDisk",
-				Value: expandGCEPersistentDiskVolumeSource(v),
-			})
-		} else if v, ok := oldIn.([]interface{}); ok && len(v) > 0 {
+		oldV, oldOk := oldIn.([]interface{})
+		newV, newOk := newIn.([]interface{})
+
+		if newOk && len(newV) > 0 {
+			if oldOk && len(oldV) > 0 {
+				ops = append(ops, &ReplaceOperation{
+					Path:  pathPrefix + "/gcePersistentDisk",
+					Value: expandGCEPersistentDiskVolumeSource(newV),
+				})
+			} else {
+				ops = append(ops, &AddOperation{
+					Path:  pathPrefix + "/gcePersistentDisk",
+					Value: expandGCEPersistentDiskVolumeSource(newV),
+				})
+			}
+		} else if oldOk && len(oldV) > 0 {
 			ops = append(ops, &RemoveOperation{Path: pathPrefix + "/gcePersistentDisk"})
 		}
 	}
 
 	if d.HasChange(prefix + "aws_elastic_block_store") {
 		oldIn, newIn := d.GetChange(prefix + "aws_elastic_block_store")
-		if v, ok := newIn.([]interface{}); ok && len(v) > 0 {
-			ops = append(ops, &ReplaceOperation{
-				Path:  pathPrefix + "/awsElasticBlockStore",
-				Value: expandAWSElasticBlockStoreVolumeSource(v),
-			})
-		} else if v, ok := oldIn.([]interface{}); ok && len(v) > 0 {
+		oldV, oldOk := oldIn.([]interface{})
+		newV, newOk := newIn.([]interface{})
+
+		if newOk && len(newV) > 0 {
+			if oldOk && len(oldV) > 0 {
+				ops = append(ops, &ReplaceOperation{
+					Path:  pathPrefix + "/awsElasticBlockStore",
+					Value: expandAWSElasticBlockStoreVolumeSource(newV),
+				})
+			} else {
+				ops = append(ops, &AddOperation{
+					Path:  pathPrefix + "/awsElasticBlockStore",
+					Value: expandAWSElasticBlockStoreVolumeSource(newV),
+				})
+			}
+		} else if oldOk && len(oldV) > 0 {
 			ops = append(ops, &RemoveOperation{Path: pathPrefix + "/awsElasticBlockStore"})
 		}
 	}
 
 	if d.HasChange(prefix + "host_path") {
 		oldIn, newIn := d.GetChange(prefix + "host_path")
-		if v, ok := newIn.([]interface{}); ok && len(v) > 0 {
-			ops = append(ops, &ReplaceOperation{
-				Path:  pathPrefix + "/hostPath",
-				Value: expandHostPathVolumeSource(v),
-			})
-		} else if v, ok := oldIn.([]interface{}); ok && len(v) > 0 {
+		oldV, oldOk := oldIn.([]interface{})
+		newV, newOk := newIn.([]interface{})
+
+		if newOk && len(newV) > 0 {
+			if oldOk && len(oldV) > 0 {
+				ops = append(ops, &ReplaceOperation{
+					Path:  pathPrefix + "/hostPath",
+					Value: expandHostPathVolumeSource(newV),
+				})
+			} else {
+				ops = append(ops, &AddOperation{
+					Path:  pathPrefix + "/hostPath",
+					Value: expandHostPathVolumeSource(newV),
+				})
+			}
+		} else if oldOk && len(oldV) > 0 {
 			ops = append(ops, &RemoveOperation{Path: pathPrefix + "/hostPath"})
 		}
 	}
 
 	if d.HasChange(prefix + "glusterfs") {
 		oldIn, newIn := d.GetChange(prefix + "glusterfs")
-		if v, ok := newIn.([]interface{}); ok && len(v) > 0 {
-			ops = append(ops, &ReplaceOperation{
-				Path:  pathPrefix + "/glusterfs",
-				Value: expandGlusterfsVolumeSource(v),
-			})
-		} else if v, ok := oldIn.([]interface{}); ok && len(v) > 0 {
+		oldV, oldOk := oldIn.([]interface{})
+		newV, newOk := newIn.([]interface{})
+
+		if newOk && len(newV) > 0 {
+			if oldOk && len(oldV) > 0 {
+				ops = append(ops, &ReplaceOperation{
+					Path:  pathPrefix + "/glusterfs",
+					Value: expandGlusterfsVolumeSource(newV),
+				})
+			} else {
+				ops = append(ops, &AddOperation{
+					Path:  pathPrefix + "/glusterfs",
+					Value: expandGlusterfsVolumeSource(newV),
+				})
+			}
+		} else if oldOk && len(oldV) > 0 {
 			ops = append(ops, &RemoveOperation{Path: pathPrefix + "/glusterfs"})
 		}
 	}
 
 	if d.HasChange(prefix + "nfs") {
 		oldIn, newIn := d.GetChange(prefix + "nfs")
-		if v, ok := newIn.([]interface{}); ok && len(v) > 0 {
-			ops = append(ops, &ReplaceOperation{
-				Path:  pathPrefix + "/nfs",
-				Value: expandNFSVolumeSource(v),
-			})
-		} else if v, ok := oldIn.([]interface{}); ok && len(v) > 0 {
+		oldV, oldOk := oldIn.([]interface{})
+		newV, newOk := newIn.([]interface{})
+
+		if newOk && len(newV) > 0 {
+			if oldOk && len(oldV) > 0 {
+				ops = append(ops, &ReplaceOperation{
+					Path:  pathPrefix + "/nfs",
+					Value: expandNFSVolumeSource(newV),
+				})
+			} else {
+				ops = append(ops, &AddOperation{
+					Path:  pathPrefix + "/nfs",
+					Value: expandNFSVolumeSource(newV),
+				})
+			}
+		} else if oldOk && len(oldV) > 0 {
 			ops = append(ops, &RemoveOperation{Path: pathPrefix + "/nfs"})
 		}
 	}
 
 	if d.HasChange(prefix + "rbd") {
 		oldIn, newIn := d.GetChange(prefix + "rbd")
-		if v, ok := newIn.([]interface{}); ok && len(v) > 0 {
-			ops = append(ops, &ReplaceOperation{
-				Path:  pathPrefix + "/rbd",
-				Value: expandRBDVolumeSource(v),
-			})
-		} else if v, ok := oldIn.([]interface{}); ok && len(v) > 0 {
+		oldV, oldOk := oldIn.([]interface{})
+		newV, newOk := newIn.([]interface{})
+
+		if newOk && len(newV) > 0 {
+			if oldOk && len(oldV) > 0 {
+				ops = append(ops, &ReplaceOperation{
+					Path:  pathPrefix + "/rbd",
+					Value: expandRBDVolumeSource(newV),
+				})
+			} else {
+				ops = append(ops, &AddOperation{
+					Path:  pathPrefix + "/rbd",
+					Value: expandRBDVolumeSource(newV),
+				})
+			}
+		} else if oldOk && len(oldV) > 0 {
 			ops = append(ops, &RemoveOperation{Path: pathPrefix + "/rbd"})
 		}
 	}
 
 	if d.HasChange(prefix + "iscsi") {
 		oldIn, newIn := d.GetChange(prefix + "iscsi")
-		if v, ok := newIn.([]interface{}); ok && len(v) > 0 {
-			ops = append(ops, &ReplaceOperation{
-				Path:  pathPrefix + "/iscsi",
-				Value: expandISCSIVolumeSource(v),
-			})
-		} else if v, ok := oldIn.([]interface{}); ok && len(v) > 0 {
+		oldV, oldOk := oldIn.([]interface{})
+		newV, newOk := newIn.([]interface{})
+
+		if newOk && len(newV) > 0 {
+			if oldOk && len(oldV) > 0 {
+				ops = append(ops, &ReplaceOperation{
+					Path:  pathPrefix + "/iscsi",
+					Value: expandISCSIVolumeSource(newV),
+				})
+			} else {
+				ops = append(ops, &AddOperation{
+					Path:  pathPrefix + "/iscsi",
+					Value: expandISCSIVolumeSource(newV),
+				})
+			}
+		} else if oldOk && len(oldV) > 0 {
 			ops = append(ops, &RemoveOperation{Path: pathPrefix + "/iscsi"})
 		}
 	}
 
 	if d.HasChange(prefix + "cinder") {
 		oldIn, newIn := d.GetChange(prefix + "cinder")
-		if v, ok := newIn.([]interface{}); ok && len(v) > 0 {
-			ops = append(ops, &ReplaceOperation{
-				Path:  pathPrefix + "/cinder",
-				Value: expandCinderVolumeSource(v),
-			})
-		} else if v, ok := oldIn.([]interface{}); ok && len(v) > 0 {
+		oldV, oldOk := oldIn.([]interface{})
+		newV, newOk := newIn.([]interface{})
+
+		if newOk && len(newV) > 0 {
+			if oldOk && len(oldV) > 0 {
+				ops = append(ops, &ReplaceOperation{
+					Path:  pathPrefix + "/cinder",
+					Value: expandCinderVolumeSource(newV),
+				})
+			} else {
+				ops = append(ops, &AddOperation{
+					Path:  pathPrefix + "/cinder",
+					Value: expandCinderVolumeSource(newV),
+				})
+			}
+		} else if oldOk && len(oldV) > 0 {
 			ops = append(ops, &RemoveOperation{Path: pathPrefix + "/cinder"})
 		}
 	}
 
 	if d.HasChange(prefix + "ceph_fs") {
 		oldIn, newIn := d.GetChange(prefix + "ceph_fs")
-		if v, ok := newIn.([]interface{}); ok && len(v) > 0 {
-			ops = append(ops, &ReplaceOperation{
-				Path:  pathPrefix + "/cephfs",
-				Value: expandCephFSVolumeSource(v),
-			})
-		} else if v, ok := oldIn.([]interface{}); ok && len(v) > 0 {
+		oldV, oldOk := oldIn.([]interface{})
+		newV, newOk := newIn.([]interface{})
+
+		if newOk && len(newV) > 0 {
+			if oldOk && len(oldV) > 0 {
+				ops = append(ops, &ReplaceOperation{
+					Path:  pathPrefix + "/cephfs",
+					Value: expandCephFSVolumeSource(newV),
+				})
+			} else {
+				ops = append(ops, &AddOperation{
+					Path:  pathPrefix + "/cephfs",
+					Value: expandCephFSVolumeSource(newV),
+				})
+			}
+		} else if oldOk && len(oldV) > 0 {
 			ops = append(ops, &RemoveOperation{Path: pathPrefix + "/cephfs"})
 		}
 	}
 
 	if d.HasChange(prefix + "fc") {
 		oldIn, newIn := d.GetChange(prefix + "fc")
-		if v, ok := newIn.([]interface{}); ok && len(v) > 0 {
-			ops = append(ops, &ReplaceOperation{
-				Path:  pathPrefix + "/fc",
-				Value: expandFCVolumeSource(v),
-			})
-		} else if v, ok := oldIn.([]interface{}); ok && len(v) > 0 {
+		oldV, oldOk := oldIn.([]interface{})
+		newV, newOk := newIn.([]interface{})
+
+		if newOk && len(newV) > 0 {
+			if oldOk && len(oldV) > 0 {
+				ops = append(ops, &ReplaceOperation{
+					Path:  pathPrefix + "/fc",
+					Value: expandFCVolumeSource(newV),
+				})
+			} else {
+				ops = append(ops, &AddOperation{
+					Path:  pathPrefix + "/fc",
+					Value: expandFCVolumeSource(newV),
+				})
+			}
+		} else if oldOk && len(oldV) > 0 {
 			ops = append(ops, &RemoveOperation{Path: pathPrefix + "/fc"})
 		}
 	}
 
 	if d.HasChange(prefix + "flocker") {
 		oldIn, newIn := d.GetChange(prefix + "flocker")
-		if v, ok := newIn.([]interface{}); ok && len(v) > 0 {
-			ops = append(ops, &ReplaceOperation{
-				Path:  pathPrefix + "/flocker",
-				Value: expandFlockerVolumeSource(v),
-			})
-		} else if v, ok := oldIn.([]interface{}); ok && len(v) > 0 {
+		oldV, oldOk := oldIn.([]interface{})
+		newV, newOk := newIn.([]interface{})
+
+		if newOk && len(newV) > 0 {
+			if oldOk && len(oldV) > 0 {
+				ops = append(ops, &ReplaceOperation{
+					Path:  pathPrefix + "/flocker",
+					Value: expandFlockerVolumeSource(newV),
+				})
+			} else {
+				ops = append(ops, &AddOperation{
+					Path:  pathPrefix + "/flocker",
+					Value: expandFlockerVolumeSource(newV),
+				})
+			}
+		} else if oldOk && len(oldV) > 0 {
 			ops = append(ops, &RemoveOperation{Path: pathPrefix + "/flocker"})
 		}
 	}
 
 	if d.HasChange(prefix + "flex_volume") {
 		oldIn, newIn := d.GetChange(prefix + "flex_volume")
-		if v, ok := newIn.([]interface{}); ok && len(v) > 0 {
-			ops = append(ops, &ReplaceOperation{
-				Path:  pathPrefix + "/flexVolume",
-				Value: expandFlexVolumeSource(v),
-			})
-		} else if v, ok := oldIn.([]interface{}); ok && len(v) > 0 {
+		oldV, oldOk := oldIn.([]interface{})
+		newV, newOk := newIn.([]interface{})
+
+		if newOk && len(newV) > 0 {
+			if oldOk && len(oldV) > 0 {
+				ops = append(ops, &ReplaceOperation{
+					Path:  pathPrefix + "/flexVolume",
+					Value: expandFlexVolumeSource(newV),
+				})
+			} else {
+				ops = append(ops, &AddOperation{
+					Path:  pathPrefix + "/flexVolume",
+					Value: expandFlexVolumeSource(newV),
+				})
+			}
+		} else if oldOk && len(oldV) > 0 {
 			ops = append(ops, &RemoveOperation{Path: pathPrefix + "/flexVolume"})
 		}
 	}
 
 	if d.HasChange(prefix + "azure_file") {
 		oldIn, newIn := d.GetChange(prefix + "azure_file")
-		if v, ok := newIn.([]interface{}); ok && len(v) > 0 {
-			ops = append(ops, &ReplaceOperation{
-				Path:  pathPrefix + "/azureFile",
-				Value: expandAzureFileVolumeSource(v),
-			})
-		} else if v, ok := oldIn.([]interface{}); ok && len(v) > 0 {
+		oldV, oldOk := oldIn.([]interface{})
+		newV, newOk := newIn.([]interface{})
+
+		if newOk && len(newV) > 0 {
+			if oldOk && len(oldV) > 0 {
+				ops = append(ops, &ReplaceOperation{
+					Path:  pathPrefix + "/azureFile",
+					Value: expandAzureFileVolumeSource(newV),
+				})
+			} else {
+				ops = append(ops, &AddOperation{
+					Path:  pathPrefix + "/azureFile",
+					Value: expandAzureFileVolumeSource(newV),
+				})
+			}
+		} else if oldOk && len(oldV) > 0 {
 			ops = append(ops, &RemoveOperation{Path: pathPrefix + "/azureFile"})
 		}
 	}
 
 	if d.HasChange(prefix + "vsphere_volume") {
 		oldIn, newIn := d.GetChange(prefix + "vsphere_volume")
-		if v, ok := newIn.([]interface{}); ok && len(v) > 0 {
-			ops = append(ops, &ReplaceOperation{
-				Path:  pathPrefix + "/vsphereVolume",
-				Value: expandVsphereVirtualDiskVolumeSource(v),
-			})
-		} else if v, ok := oldIn.([]interface{}); ok && len(v) > 0 {
+		oldV, oldOk := oldIn.([]interface{})
+		newV, newOk := newIn.([]interface{})
+
+		if newOk && len(newV) > 0 {
+			if oldOk && len(oldV) > 0 {
+				ops = append(ops, &ReplaceOperation{
+					Path:  pathPrefix + "/vsphereVolume",
+					Value: expandVsphereVirtualDiskVolumeSource(newV),
+				})
+			} else {
+				ops = append(ops, &AddOperation{
+					Path:  pathPrefix + "/vsphereVolume",
+					Value: expandVsphereVirtualDiskVolumeSource(newV),
+				})
+			}
+		} else if oldOk && len(oldV) > 0 {
 			ops = append(ops, &RemoveOperation{Path: pathPrefix + "/vsphereVolume"})
 		}
 	}
 
 	if d.HasChange(prefix + "quobyte") {
 		oldIn, newIn := d.GetChange(prefix + "quobyte")
-		if v, ok := newIn.([]interface{}); ok && len(v) > 0 {
-			ops = append(ops, &ReplaceOperation{
-				Path:  pathPrefix + "/quobyte",
-				Value: expandQuobyteVolumeSource(v),
-			})
-		} else if v, ok := oldIn.([]interface{}); ok && len(v) > 0 {
+		oldV, oldOk := oldIn.([]interface{})
+		newV, newOk := newIn.([]interface{})
+
+		if newOk && len(newV) > 0 {
+			if oldOk && len(oldV) > 0 {
+				ops = append(ops, &ReplaceOperation{
+					Path:  pathPrefix + "/quobyte",
+					Value: expandQuobyteVolumeSource(newV),
+				})
+			} else {
+				ops = append(ops, &AddOperation{
+					Path:  pathPrefix + "/quobyte",
+					Value: expandQuobyteVolumeSource(newV),
+				})
+			}
+		} else if oldOk && len(oldV) > 0 {
 			ops = append(ops, &RemoveOperation{Path: pathPrefix + "/quobyte"})
 		}
 	}
 
 	if d.HasChange(prefix + "azure_disk") {
 		oldIn, newIn := d.GetChange(prefix + "azure_disk")
-		if v, ok := newIn.([]interface{}); ok && len(v) > 0 {
-			ops = append(ops, &ReplaceOperation{
-				Path:  pathPrefix + "/azureDisk",
-				Value: expandAzureDiskVolumeSource(v),
-			})
-		} else if v, ok := oldIn.([]interface{}); ok && len(v) > 0 {
+		oldV, oldOk := oldIn.([]interface{})
+		newV, newOk := newIn.([]interface{})
+
+		if newOk && len(newV) > 0 {
+			if oldOk && len(oldV) > 0 {
+				ops = append(ops, &ReplaceOperation{
+					Path:  pathPrefix + "/azureDisk",
+					Value: expandAzureDiskVolumeSource(newV),
+				})
+			} else {
+				ops = append(ops, &AddOperation{
+					Path:  pathPrefix + "/azureDisk",
+					Value: expandAzureDiskVolumeSource(newV),
+				})
+			}
+		} else if oldOk && len(oldV) > 0 {
 			ops = append(ops, &RemoveOperation{Path: pathPrefix + "/azureDisk"})
 		}
 	}
 
 	if d.HasChange(prefix + "photon_persistent_disk") {
 		oldIn, newIn := d.GetChange(prefix + "photon_persistent_disk")
-		if v, ok := newIn.([]interface{}); ok && len(v) > 0 {
-			ops = append(ops, &ReplaceOperation{
-				Path:  pathPrefix + "/photonPersistentDisk",
-				Value: expandPhotonPersistentDiskVolumeSource(v),
-			})
-		} else if v, ok := oldIn.([]interface{}); ok && len(v) > 0 {
+		oldV, oldOk := oldIn.([]interface{})
+		newV, newOk := newIn.([]interface{})
+
+		if newOk && len(newV) > 0 {
+			if oldOk && len(oldV) > 0 {
+				ops = append(ops, &ReplaceOperation{
+					Path:  pathPrefix + "/photonPersistentDisk",
+					Value: expandPhotonPersistentDiskVolumeSource(newV),
+				})
+			} else {
+				ops = append(ops, &AddOperation{
+					Path:  pathPrefix + "/photonPersistentDisk",
+					Value: expandPhotonPersistentDiskVolumeSource(newV),
+				})
+			}
+		} else if oldOk && len(oldV) > 0 {
 			ops = append(ops, &RemoveOperation{Path: pathPrefix + "/photonPersistentDisk"})
 		}
 	}

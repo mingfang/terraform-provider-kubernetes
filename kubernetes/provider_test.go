@@ -1,6 +1,7 @@
 package kubernetes
 
 import (
+	"errors"
 	"os"
 	"strings"
 	"testing"
@@ -8,7 +9,11 @@ import (
 	"github.com/hashicorp/terraform/config"
 	"github.com/hashicorp/terraform/helper/schema"
 	"github.com/hashicorp/terraform/terraform"
+	"github.com/terraform-providers/terraform-provider-aws/aws"
 	"github.com/terraform-providers/terraform-provider-google/google"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	kubernetes "k8s.io/client-go/kubernetes"
+	api "k8s.io/client-go/pkg/api/v1"
 )
 
 var testAccProviders map[string]terraform.ResourceProvider
@@ -19,6 +24,7 @@ func init() {
 	testAccProviders = map[string]terraform.ResourceProvider{
 		"kubernetes": testAccProvider,
 		"google":     google.Provider(),
+		"aws":        aws.Provider(),
 	}
 }
 
@@ -168,9 +174,90 @@ func testAccPreCheck(t *testing.T) {
 			}, ", "))
 	}
 
-	if os.Getenv("GOOGLE_PROJECT") == "" || os.Getenv("GOOGLE_REGION") == "" || os.Getenv("GOOGLE_ZONE") == "" {
-		t.Fatal("GOOGLE_PROJECT, GOOGLE_REGION and GOOGLE_ZONE must be set for acceptance tests")
+	err := testAccProvider.Configure(terraform.NewResourceConfig(nil))
+	if err != nil {
+		t.Fatal(err)
 	}
+}
+
+func skipIfNoGoogleCloudSettingsFound(t *testing.T) {
+	if os.Getenv("GOOGLE_PROJECT") == "" || os.Getenv("GOOGLE_REGION") == "" || os.Getenv("GOOGLE_ZONE") == "" {
+		t.Skip("The environment variables GOOGLE_PROJECT, GOOGLE_REGION and GOOGLE_ZONE" +
+			" must be set to run Google Cloud tests - skipping")
+	}
+}
+
+func skipIfNoAwsSettingsFound(t *testing.T) {
+	if os.Getenv("AWS_DEFAULT_REGION") == "" || os.Getenv("AWS_ZONE") == "" || os.Getenv("AWS_ACCESS_KEY_ID") == "" || os.Getenv("AWS_SECRET_ACCESS_KEY") == "" {
+		t.Skip("The environment variables AWS_DEFAULT_REGION, AWS_ZONE, AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY" +
+			" must be set to run AWS tests - skipping")
+	}
+}
+
+func skipIfNoLoadBalancersAvailable(t *testing.T) {
+	// TODO: Support AWS ELBs
+	isInGke, err := isRunningInGke()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !isInGke {
+		t.Skip("The Kubernetes endpoint must come from an environment which supports " +
+			"load balancer provisioning for this test to run - skipping")
+	}
+}
+
+func skipIfNotRunningInGke(t *testing.T) {
+	isInGke, err := isRunningInGke()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !isInGke {
+		t.Skip("The Kubernetes endpoint must come from GKE for this test to run - skipping")
+	}
+}
+
+func isRunningInMinikube() (bool, error) {
+	node, err := getFirstNode()
+	if err != nil {
+		return false, err
+	}
+
+	labels := node.GetLabels()
+	if v, ok := labels["kubernetes.io/hostname"]; ok && v == "minikube" {
+		return true, nil
+	}
+	return false, nil
+}
+
+func isRunningInGke() (bool, error) {
+	node, err := getFirstNode()
+	if err != nil {
+		return false, err
+	}
+
+	labels := node.GetLabels()
+	if _, ok := labels["cloud.google.com/gke-nodepool"]; ok {
+		return true, nil
+	}
+	return false, nil
+}
+
+func getFirstNode() (api.Node, error) {
+	meta := testAccProvider.Meta()
+	if meta == nil {
+		return api.Node{}, errors.New("Provider not initialized, unable to get cluster node")
+	}
+	conn := meta.(*kubernetes.Clientset)
+	resp, err := conn.CoreV1().Nodes().List(metav1.ListOptions{})
+	if err != nil {
+		return api.Node{}, err
+	}
+
+	if len(resp.Items) < 1 {
+		return api.Node{}, errors.New("Expected at least 1 node, none found")
+	}
+
+	return resp.Items[0], nil
 }
 
 type currentEnv struct {

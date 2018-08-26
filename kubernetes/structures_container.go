@@ -4,11 +4,11 @@ import (
 	"strconv"
 
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/kubernetes/pkg/api/v1"
+	"k8s.io/client-go/pkg/api/v1"
 )
 
 func flattenCapability(in []v1.Capability) []string {
-	att := make([]string, 0, len(in))
+	att := make([]string, len(in), len(in))
 	for i, v := range in {
 		att[i] = string(v)
 	}
@@ -510,7 +510,7 @@ func expandContainerSecurityContext(l []interface{}) *v1.SecurityContext {
 func expandCapabilitySlice(s []interface{}) []v1.Capability {
 	result := make([]v1.Capability, len(s), len(s))
 	for k, v := range s {
-		result[k] = v.(v1.Capability)
+		result[k] = v1.Capability(v.(string))
 	}
 	return result
 }

@@ -194,8 +194,8 @@ func volumeMountFields() map[string]*schema.Schema {
 	}
 }
 
-func containerFields() map[string]*schema.Schema {
-	return map[string]*schema.Schema{
+func containerFields(isUpdatable, isInitContainer bool) map[string]*schema.Schema {
+	s := map[string]*schema.Schema{
 		"args": {
 			Type:        schema.TypeList,
 			Optional:    true,
@@ -222,6 +222,7 @@ func containerFields() map[string]*schema.Schema {
 					},
 					"value": {
 						Type:        schema.TypeString,
+						ForceNew:    true,
 						Optional:    true,
 						Description: `Variable references $(VAR_NAME) are expanded using the previous defined environment variables in the container and any service environment variables. If a variable cannot be resolved, the reference in the input string will be unchanged. The $(VAR_NAME) syntax can be escaped with a double $$, ie: $$(VAR_NAME). Escaped references will never be expanded, regardless of whether the variable exists or not. Defaults to "".`,
 					},
@@ -473,6 +474,18 @@ func containerFields() map[string]*schema.Schema {
 			Description: "Container's working directory. If not specified, the container runtime's default will be used, which might be configured in the container image. Cannot be updated.",
 		},
 	}
+
+	if !isUpdatable {
+		for k, _ := range s {
+			if k == "image" && !isInitContainer {
+				// this field is updatable for non-init containers
+				continue
+			}
+			s[k].ForceNew = true
+		}
+	}
+
+	return s
 }
 
 func probeSchema() *schema.Resource {

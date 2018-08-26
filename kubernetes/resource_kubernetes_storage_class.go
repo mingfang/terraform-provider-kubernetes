@@ -8,8 +8,8 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	pkgApi "k8s.io/apimachinery/pkg/types"
-	api "k8s.io/kubernetes/pkg/apis/storage/v1"
-	kubernetes "k8s.io/kubernetes/pkg/client/clientset_generated/clientset"
+	kubernetes "k8s.io/client-go/kubernetes"
+	api "k8s.io/client-go/pkg/apis/storage/v1"
 )
 
 func resourceKubernetesStorageClass() *schema.Resource {
@@ -116,7 +116,7 @@ func resourceKubernetesStorageClassDelete(d *schema.ResourceData, meta interface
 		return err
 	}
 
-	log.Printf("[INFO] Config map %s deleted", name)
+	log.Printf("[INFO] Storage class %s deleted", name)
 
 	d.SetId("")
 	return nil

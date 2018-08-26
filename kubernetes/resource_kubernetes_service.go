@@ -10,8 +10,8 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	pkgApi "k8s.io/apimachinery/pkg/types"
-	api "k8s.io/kubernetes/pkg/api/v1"
-	kubernetes "k8s.io/kubernetes/pkg/client/clientset_generated/clientset"
+	kubernetes "k8s.io/client-go/kubernetes"
+	api "k8s.io/client-go/pkg/api/v1"
 )
 
 func resourceKubernetesService() *schema.Resource {
@@ -95,9 +95,10 @@ func resourceKubernetesService() *schema.Resource {
 										Default:     "TCP",
 									},
 									"target_port": {
-										Type:        schema.TypeInt,
+										Type:        schema.TypeString,
 										Description: "Number or name of the port to access on the pods targeted by the service. Number must be in the range 1 to 65535. This field is ignored for services with `cluster_ip = \"None\"`. More info: http://kubernetes.io/docs/user-guide/services#defining-a-service",
-										Required:    true,
+										Optional:    true,
+										Computed:    true,
 									},
 								},
 							},
@@ -193,7 +194,11 @@ func resourceKubernetesServiceCreate(d *schema.ResourceData, meta interface{}) e
 func resourceKubernetesServiceRead(d *schema.ResourceData, meta interface{}) error {
 	conn := meta.(*kubernetes.Clientset)
 
-	namespace, name := idParts(d.Id())
+	namespace, name, err := idParts(d.Id())
+	if err != nil {
+		return err
+	}
+
 	log.Printf("[INFO] Reading service %s", name)
 	svc, err := conn.CoreV1().Services(namespace).Get(name, meta_v1.GetOptions{})
 	if err != nil {
@@ -224,11 +229,21 @@ func resourceKubernetesServiceRead(d *schema.ResourceData, meta interface{}) err
 func resourceKubernetesServiceUpdate(d *schema.ResourceData, meta interface{}) error {
 	conn := meta.(*kubernetes.Clientset)
 
-	namespace, name := idParts(d.Id())
+	namespace, name, err := idParts(d.Id())
+	if err != nil {
+		return err
+	}
 
 	ops := patchMetadata("metadata.0.", "/metadata/", d)
 	if d.HasChange("spec") {
-		diffOps := patchServiceSpec("spec.0.", "/spec/", d)
+		serverVersion, err := conn.ServerVersion()
+		if err != nil {
+			return err
+		}
+		diffOps, err := patchServiceSpec("spec.0.", "/spec/", d, serverVersion)
+		if err != nil {
+			return err
+		}
 		ops = append(ops, diffOps...)
 	}
 	data, err := ops.MarshalJSON()
@@ -249,9 +264,13 @@ func resourceKubernetesServiceUpdate(d *schema.ResourceData, meta interface{}) e
 func resourceKubernetesServiceDelete(d *schema.ResourceData, meta interface{}) error {
 	conn := meta.(*kubernetes.Clientset)
 
-	namespace, name := idParts(d.Id())
+	namespace, name, err := idParts(d.Id())
+	if err != nil {
+		return err
+	}
+
 	log.Printf("[INFO] Deleting service: %#v", name)
-	err := conn.CoreV1().Services(namespace).Delete(name, &meta_v1.DeleteOptions{})
+	err = conn.CoreV1().Services(namespace).Delete(name, &meta_v1.DeleteOptions{})
 	if err != nil {
 		return err
 	}
@@ -265,9 +284,13 @@ func resourceKubernetesServiceDelete(d *schema.ResourceData, meta interface{}) e
 func resourceKubernetesServiceExists(d *schema.ResourceData, meta interface{}) (bool, error) {
 	conn := meta.(*kubernetes.Clientset)
 
-	namespace, name := idParts(d.Id())
+	namespace, name, err := idParts(d.Id())
+	if err != nil {
+		return false, err
+	}
+
 	log.Printf("[INFO] Checking service %s", name)
-	_, err := conn.CoreV1().Services(namespace).Get(name, meta_v1.GetOptions{})
+	_, err = conn.CoreV1().Services(namespace).Get(name, meta_v1.GetOptions{})
 	if err != nil {
 		if statusErr, ok := err.(*errors.StatusError); ok && statusErr.ErrStatus.Code == 404 {
 			return false, nil

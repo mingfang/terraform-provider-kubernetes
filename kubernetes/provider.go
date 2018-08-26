@@ -9,11 +9,11 @@ import (
 	"github.com/hashicorp/terraform/helper/schema"
 	"github.com/hashicorp/terraform/terraform"
 	"github.com/mitchellh/go-homedir"
+	kubernetes "k8s.io/client-go/kubernetes"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
-	kubernetes "k8s.io/kubernetes/pkg/client/clientset_generated/clientset"
 )
 
 func Provider() terraform.ResourceProvider {
@@ -95,6 +95,12 @@ func Provider() terraform.ResourceProvider {
 				DefaultFunc: schema.EnvDefaultFunc("KUBE_TOKEN", ""),
 				Description: "Token to authentifcate an service account",
 			},
+			"load_config_file": {
+				Type:        schema.TypeBool,
+				Optional:    true,
+				DefaultFunc: schema.EnvDefaultFunc("KUBE_LOAD_CONFIG_FILE", true),
+				Description: "Load local kubeconfig.",
+			},
 		},
 
 		DataSourcesMap: map[string]*schema.Resource{
@@ -124,8 +130,14 @@ func Provider() terraform.ResourceProvider {
 }
 
 func providerConfigure(d *schema.ResourceData) (interface{}, error) {
-	// Config file loading
-	cfg, err := tryLoadingConfigFile(d)
+
+	var cfg *restclient.Config
+	var err error
+	if d.Get("load_config_file").(bool) {
+		// Config file loading
+		cfg, err = tryLoadingConfigFile(d)
+	}
+
 	if err != nil {
 		return nil, err
 	}

@@ -10,8 +10,8 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	pkgApi "k8s.io/apimachinery/pkg/types"
-	api "k8s.io/kubernetes/pkg/api/v1"
-	kubernetes "k8s.io/kubernetes/pkg/client/clientset_generated/clientset"
+	kubernetes "k8s.io/client-go/kubernetes"
+	api "k8s.io/client-go/pkg/api/v1"
 )
 
 func resourceKubernetesReplicationController() *schema.Resource {
@@ -63,7 +63,7 @@ func resourceKubernetesReplicationController() *schema.Resource {
 							Required:    true,
 							MaxItems:    1,
 							Elem: &schema.Resource{
-								Schema: podSpecFields(),
+								Schema: podSpecFields(true),
 							},
 						},
 					},
@@ -115,7 +115,11 @@ func resourceKubernetesReplicationControllerCreate(d *schema.ResourceData, meta 
 func resourceKubernetesReplicationControllerRead(d *schema.ResourceData, meta interface{}) error {
 	conn := meta.(*kubernetes.Clientset)
 
-	namespace, name := idParts(d.Id())
+	namespace, name, err := idParts(d.Id())
+	if err != nil {
+		return err
+	}
+
 	log.Printf("[INFO] Reading replication controller %s", name)
 	rc, err := conn.CoreV1().ReplicationControllers(namespace).Get(name, metav1.GetOptions{})
 	if err != nil {
@@ -145,7 +149,10 @@ func resourceKubernetesReplicationControllerRead(d *schema.ResourceData, meta in
 func resourceKubernetesReplicationControllerUpdate(d *schema.ResourceData, meta interface{}) error {
 	conn := meta.(*kubernetes.Clientset)
 
-	namespace, name := idParts(d.Id())
+	namespace, name, err := idParts(d.Id())
+	if err != nil {
+		return err
+	}
 
 	ops := patchMetadata("metadata.0.", "/metadata/", d)
 
@@ -183,7 +190,11 @@ func resourceKubernetesReplicationControllerUpdate(d *schema.ResourceData, meta 
 func resourceKubernetesReplicationControllerDelete(d *schema.ResourceData, meta interface{}) error {
 	conn := meta.(*kubernetes.Clientset)
 
-	namespace, name := idParts(d.Id())
+	namespace, name, err := idParts(d.Id())
+	if err != nil {
+		return err
+	}
+
 	log.Printf("[INFO] Deleting replication controller: %#v", name)
 
 	// Drain all replicas before deleting
@@ -222,9 +233,13 @@ func resourceKubernetesReplicationControllerDelete(d *schema.ResourceData, meta 
 func resourceKubernetesReplicationControllerExists(d *schema.ResourceData, meta interface{}) (bool, error) {
 	conn := meta.(*kubernetes.Clientset)
 
-	namespace, name := idParts(d.Id())
+	namespace, name, err := idParts(d.Id())
+	if err != nil {
+		return false, err
+	}
+
 	log.Printf("[INFO] Checking replication controller %s", name)
-	_, err := conn.CoreV1().ReplicationControllers(namespace).Get(name, metav1.GetOptions{})
+	_, err = conn.CoreV1().ReplicationControllers(namespace).Get(name, metav1.GetOptions{})
 	if err != nil {
 		if statusErr, ok := err.(*errors.StatusError); ok && statusErr.ErrStatus.Code == 404 {
 			return false, nil

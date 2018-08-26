@@ -21,14 +21,17 @@ func validateAnnotations(value interface{}, key string) (ws []string, es []error
 				es = append(es, fmt.Errorf("%s (%q) %s", key, k, e))
 			}
 		}
+
+		if isInternalKey(k) {
+			es = append(es, fmt.Errorf("%s: %q is internal Kubernetes annotation", key, k))
+		}
 	}
 	return
 }
 
 func validateName(value interface{}, key string) (ws []string, es []error) {
 	v := value.(string)
-
-	errors := apiValidation.NameIsDNSLabel(v, false)
+	errors := apiValidation.NameIsDNSSubdomain(v, false)
 	if len(errors) > 0 {
 		for _, err := range errors {
 			es = append(es, fmt.Errorf("%s %s", key, err))
@@ -55,7 +58,11 @@ func validateLabels(value interface{}, key string) (ws []string, es []error) {
 		for _, msg := range utilValidation.IsQualifiedName(k) {
 			es = append(es, fmt.Errorf("%s (%q) %s", key, k, msg))
 		}
-		val := v.(string)
+		val, isString := v.(string)
+		if !isString {
+			es = append(es, fmt.Errorf("%s.%s (%#v): Expected value to be string", key, k, v))
+			return
+		}
 		for _, msg := range utilValidation.IsValidLabelValue(val) {
 			es = append(es, fmt.Errorf("%s (%q) %s", key, val, msg))
 		}
@@ -176,7 +183,7 @@ func validateModeBits(value interface{}, key string) (ws []string, es []error) {
 func validateAttributeValueDoesNotContain(searchString string) schema.SchemaValidateFunc {
 	return func(v interface{}, k string) (ws []string, errors []error) {
 		input := v.(string)
-		if !strings.Contains(input, searchString) {
+		if strings.Contains(input, searchString) {
 			errors = append(errors, fmt.Errorf(
 				"%q must not contain %q",
 				k, searchString))

@@ -48,6 +48,14 @@ The following arguments are supported:
 * `name` - (Optional) Name of the pod, must be unique. Cannot be updated. More info: http://kubernetes.io/docs/user-guide/identifiers#names
 * `namespace` - (Optional) Namespace defines the space within which name of the pod must be unique.
 
+### Timeouts
+
+`kubernetes_pod` provides the following
+[Timeouts](/docs/configuration/resources.html#timeouts) configuration options:
+
+- `create` - (Default `5 minutes`) Used for Creating Pods.
+- `delete` - (Default `5 minutes`) Used for Destroying Pods.
+
 #### Attributes
 
 * `generation` - A sequence number representing a specific generation of the desired state.
@@ -61,6 +69,7 @@ The following arguments are supported:
 
 * `active_deadline_seconds` - (Optional) Optional duration in seconds the pod may be active on the node relative to StartTime before the system will actively try to mark it failed and kill associated containers. Value must be a positive integer.
 * `container` - (Optional) List of containers belonging to the pod. Containers cannot currently be added or removed. There must be at least one container in a Pod. Cannot be updated. More info: http://kubernetes.io/docs/user-guide/containers
+* `init_container` - (Optional) List of init containers belonging to the pod. Init containers always run to completion and each must complete succesfully before the next is started. More info: https://kubernetes.io/docs/concepts/workloads/pods/init-containers/
 * `dns_policy` - (Optional) Set DNS policy for containers within the pod. One of 'ClusterFirst' or 'Default'. Defaults to 'ClusterFirst'.
 * `host_ipc` - (Optional) Use the host's ipc namespace. Optional: Default to false.
 * `host_network` - (Optional) Host networking requested for this pod. Use the host's network namespace. If this option is set, the ports that will be used must be specified.
@@ -445,7 +454,16 @@ The following arguments are supported:
 
 #### Arguments
 
+* `default_mode` - (Optional) Mode bits to use on created files by default. Must be a value between 0 and 0777. Defaults to 0644. Directories within the path are not affected by this setting. This might be in conflict with other options that affect the file mode, like fsGroup, and the result can be other mode bits set.
+* `items` - (Optional) List of Secret Items to project into the volume. See `items` block definition below. If unspecified, each key-value pair in the Data field of the referenced Secret will be projected into the volume as a file whose name is the key and content is the value. If specified, the listed keys will be projected into the specified paths, and unlisted keys will not be present. If a key is specified which is not present in the Secret, the volume setup will error unless it is marked `optional`. Paths must be relative and may not contain the '..' path or start with '..'.
+* `optional` - (Optional) Specify whether the Secret or it's keys must be defined.
 * `secret_name` - (Optional) Name of the secret in the pod's namespace to use. More info: http://kubernetes.io/docs/user-guide/volumes#secrets
+
+The `items` block supports the following:
+
+* `key` - (Required) The key to project.
+* `mode` - (Optional) Mode bits to use on this file, must be a value between 0 and 0777. If not specified, the volume defaultMode will be used.
+* `path` - (Required) The relative path of the file to map the key to. May not be an absolute path. May not contain the path element '..'. May not start with the string '..'.
 
 ### `secret_key_ref`
 

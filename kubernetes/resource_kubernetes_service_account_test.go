@@ -9,8 +9,8 @@ import (
 	"github.com/hashicorp/terraform/helper/resource"
 	"github.com/hashicorp/terraform/terraform"
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	api "k8s.io/kubernetes/pkg/api/v1"
-	kubernetes "k8s.io/kubernetes/pkg/client/clientset_generated/clientset"
+	kubernetes "k8s.io/client-go/kubernetes"
+	api "k8s.io/client-go/pkg/api/v1"
 )
 
 func TestAccKubernetesServiceAccount_basic(t *testing.T) {
@@ -246,7 +246,12 @@ func testAccCheckKubernetesServiceAccountDestroy(s *terraform.State) error {
 		if rs.Type != "kubernetes_service_account" {
 			continue
 		}
-		namespace, name := idParts(rs.Primary.ID)
+
+		namespace, name, err := idParts(rs.Primary.ID)
+		if err != nil {
+			return err
+		}
+
 		resp, err := conn.CoreV1().ServiceAccounts(namespace).Get(name, meta_v1.GetOptions{})
 		if err == nil {
 			if resp.Name == rs.Primary.ID {
@@ -266,7 +271,12 @@ func testAccCheckKubernetesServiceAccountExists(n string, obj *api.ServiceAccoun
 		}
 
 		conn := testAccProvider.Meta().(*kubernetes.Clientset)
-		namespace, name := idParts(rs.Primary.ID)
+
+		namespace, name, err := idParts(rs.Primary.ID)
+		if err != nil {
+			return err
+		}
+
 		out, err := conn.CoreV1().ServiceAccounts(namespace).Get(name, meta_v1.GetOptions{})
 		if err != nil {
 			return err

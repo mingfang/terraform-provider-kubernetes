@@ -10,8 +10,8 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	pkgApi "k8s.io/apimachinery/pkg/types"
-	api "k8s.io/kubernetes/pkg/api/v1"
-	kubernetes "k8s.io/kubernetes/pkg/client/clientset_generated/clientset"
+	kubernetes "k8s.io/client-go/kubernetes"
+	api "k8s.io/client-go/pkg/api/v1"
 )
 
 func resourceKubernetesPersistentVolumeClaim() *schema.Resource {
@@ -80,44 +80,7 @@ func resourceKubernetesPersistentVolumeClaim() *schema.Resource {
 							ForceNew:    true,
 							MaxItems:    1,
 							Elem: &schema.Resource{
-								Schema: map[string]*schema.Schema{
-									"match_expressions": {
-										Type:        schema.TypeList,
-										Description: "A list of label selector requirements. The requirements are ANDed.",
-										Optional:    true,
-										ForceNew:    true,
-										Elem: &schema.Resource{
-											Schema: map[string]*schema.Schema{
-												"key": {
-													Type:        schema.TypeString,
-													Description: "The label key that the selector applies to.",
-													Optional:    true,
-													ForceNew:    true,
-												},
-												"operator": {
-													Type:        schema.TypeString,
-													Description: "A key's relationship to a set of values. Valid operators ard `In`, `NotIn`, `Exists` and `DoesNotExist`.",
-													Optional:    true,
-													ForceNew:    true,
-												},
-												"values": {
-													Type:        schema.TypeSet,
-													Description: "An array of string values. If the operator is `In` or `NotIn`, the values array must be non-empty. If the operator is `Exists` or `DoesNotExist`, the values array must be empty. This array is replaced during a strategic merge patch.",
-													Optional:    true,
-													ForceNew:    true,
-													Elem:        &schema.Schema{Type: schema.TypeString},
-													Set:         schema.HashString,
-												},
-											},
-										},
-									},
-									"match_labels": {
-										Type:        schema.TypeMap,
-										Description: "A map of {key,value} pairs. A single {key,value} in the matchLabels map is equivalent to an element of `match_expressions`, whose key field is \"key\", the operator is \"In\", and the values array contains only \"value\". The requirements are ANDed.",
-										Optional:    true,
-										ForceNew:    true,
-									},
-								},
+								Schema: labelSelectorFields(),
 							},
 						},
 						"volume_name": {
@@ -190,10 +153,23 @@ func resourceKubernetesPersistentVolumeClaimCreate(d *schema.ResourceData, meta 
 		}
 		_, err = stateConf.WaitForState()
 		if err != nil {
-			lastWarnings, wErr := getLastWarningsForObject(conn, out.ObjectMeta, "PersistentVolumeClaim", 3)
+			var lastWarnings []api.Event
+			var wErr error
+
+			lastWarnings, wErr = getLastWarningsForObject(conn, out.ObjectMeta, "PersistentVolumeClaim", 3)
 			if wErr != nil {
 				return wErr
 			}
+
+			if len(lastWarnings) == 0 {
+				lastWarnings, wErr = getLastWarningsForObject(conn, meta_v1.ObjectMeta{
+					Name: out.Spec.VolumeName,
+				}, "PersistentVolume", 3)
+				if wErr != nil {
+					return wErr
+				}
+			}
+
 			return fmt.Errorf("%s%s", err, stringifyEvents(lastWarnings))
 		}
 	}
@@ -205,7 +181,11 @@ func resourceKubernetesPersistentVolumeClaimCreate(d *schema.ResourceData, meta 
 func resourceKubernetesPersistentVolumeClaimRead(d *schema.ResourceData, meta interface{}) error {
 	conn := meta.(*kubernetes.Clientset)
 
-	namespace, name := idParts(d.Id())
+	namespace, name, err := idParts(d.Id())
+	if err != nil {
+		return err
+	}
+
 	log.Printf("[INFO] Reading persistent volume claim %s", name)
 	claim, err := conn.CoreV1().PersistentVolumeClaims(namespace).Get(name, meta_v1.GetOptions{})
 	if err != nil {
@@ -227,7 +207,11 @@ func resourceKubernetesPersistentVolumeClaimRead(d *schema.ResourceData, meta in
 
 func resourceKubernetesPersistentVolumeClaimUpdate(d *schema.ResourceData, meta interface{}) error {
 	conn := meta.(*kubernetes.Clientset)
-	namespace, name := idParts(d.Id())
+
+	namespace, name, err := idParts(d.Id())
+	if err != nil {
+		return err
+	}
 
 	ops := patchMetadata("metadata.0.", "/metadata/", d)
 	// The whole spec is ForceNew = nothing to update there
@@ -249,9 +233,13 @@ func resourceKubernetesPersistentVolumeClaimUpdate(d *schema.ResourceData, meta 
 func resourceKubernetesPersistentVolumeClaimDelete(d *schema.ResourceData, meta interface{}) error {
 	conn := meta.(*kubernetes.Clientset)
 
-	namespace, name := idParts(d.Id())
+	namespace, name, err := idParts(d.Id())
+	if err != nil {
+		return err
+	}
+
 	log.Printf("[INFO] Deleting persistent volume claim: %#v", name)
-	err := conn.CoreV1().PersistentVolumeClaims(namespace).Delete(name, &meta_v1.DeleteOptions{})
+	err = conn.CoreV1().PersistentVolumeClaims(namespace).Delete(name, &meta_v1.DeleteOptions{})
 	if err != nil {
 		return err
 	}
@@ -265,9 +253,13 @@ func resourceKubernetesPersistentVolumeClaimDelete(d *schema.ResourceData, meta 
 func resourceKubernetesPersistentVolumeClaimExists(d *schema.ResourceData, meta interface{}) (bool, error) {
 	conn := meta.(*kubernetes.Clientset)
 
-	namespace, name := idParts(d.Id())
+	namespace, name, err := idParts(d.Id())
+	if err != nil {
+		return false, err
+	}
+
 	log.Printf("[INFO] Checking persistent volume claim %s", name)
-	_, err := conn.CoreV1().PersistentVolumeClaims(namespace).Get(name, meta_v1.GetOptions{})
+	_, err = conn.CoreV1().PersistentVolumeClaims(namespace).Get(name, meta_v1.GetOptions{})
 	if err != nil {
 		if statusErr, ok := err.(*errors.StatusError); ok && statusErr.ErrStatus.Code == 404 {
 			return false, nil

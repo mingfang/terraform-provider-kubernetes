@@ -20,7 +20,7 @@ resource "kubernetes_service" "example" {
   }
   spec {
     selector {
-      App = "MyApp"
+      app = "${kubernetes_pod.example.metadata.0.labels.app}"
     }
     session_affinity = "ClientIP"
     port {
@@ -29,6 +29,22 @@ resource "kubernetes_service" "example" {
     }
 
     type = "LoadBalancer"
+  }
+}
+
+resource "kubernetes_pod" "example" {
+  metadata {
+    name = "terraform-example"
+    labels {
+      app = "MyApp"
+    }
+  }
+
+  spec {
+    container {
+      image = "nginx:1.7.9"
+      name  = "example"
+    }
   }
 }
 ```
@@ -82,7 +98,7 @@ The following arguments are supported:
 * `node_port` - (Optional) The port on each node on which this service is exposed when `type` is `NodePort` or `LoadBalancer`. Usually assigned by the system. If specified, it will be allocated to the service if unused or else creation of the service will fail. Default is to auto-allocate a port if the `type` of this service requires one. More info: http://kubernetes.io/docs/user-guide/services#type--nodeport
 * `port` - (Required) The port that will be exposed by this service.
 * `protocol` - (Optional) The IP protocol for this port. Supports `TCP` and `UDP`. Default is `TCP`.
-* `target_port` - (Required) Number or name of the port to access on the pods targeted by the service. Number must be in the range 1 to 65535. This field is ignored for services with `cluster_ip = "None"`. More info: http://kubernetes.io/docs/user-guide/services#defining-a-service
+* `target_port` - (Optional) Number or name of the port to access on the pods targeted by the service. Number must be in the range 1 to 65535. This field is ignored for services with `cluster_ip = "None"`. More info: http://kubernetes.io/docs/user-guide/services#defining-a-service
 
 ## Attributes
 

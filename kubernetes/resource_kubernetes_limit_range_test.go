@@ -8,8 +8,8 @@ import (
 	"github.com/hashicorp/terraform/helper/resource"
 	"github.com/hashicorp/terraform/terraform"
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	api "k8s.io/kubernetes/pkg/api/v1"
-	kubernetes "k8s.io/kubernetes/pkg/client/clientset_generated/clientset"
+	kubernetes "k8s.io/client-go/kubernetes"
+	api "k8s.io/client-go/pkg/api/v1"
 )
 
 func TestAccKubernetesLimitRange_basic(t *testing.T) {
@@ -103,6 +103,36 @@ func TestAccKubernetesLimitRange_basic(t *testing.T) {
 					resource.TestCheckResourceAttr("kubernetes_limit_range.test", "spec.0.limit.0.min.cpu", "10m"),
 					resource.TestCheckResourceAttr("kubernetes_limit_range.test", "spec.0.limit.0.min.memory", "10M"),
 					resource.TestCheckResourceAttr("kubernetes_limit_range.test", "spec.0.limit.0.type", "Container"),
+				),
+			},
+		},
+	})
+}
+
+func TestAccKubernetesLimitRange_empty(t *testing.T) {
+	var conf api.LimitRange
+	name := fmt.Sprintf("tf-acc-test-%s", acctest.RandString(10))
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:      func() { testAccPreCheck(t) },
+		IDRefreshName: "kubernetes_limit_range.test",
+		Providers:     testAccProviders,
+		CheckDestroy:  testAccCheckKubernetesLimitRangeDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccKubernetesLimitRangeConfig_empty(name),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					testAccCheckKubernetesLimitRangeExists("kubernetes_limit_range.test", &conf),
+					resource.TestCheckResourceAttr("kubernetes_limit_range.test", "metadata.0.annotations.%", "0"),
+					testAccCheckMetaAnnotations(&conf.ObjectMeta, map[string]string{}),
+					resource.TestCheckResourceAttr("kubernetes_limit_range.test", "metadata.0.labels.%", "0"),
+					testAccCheckMetaLabels(&conf.ObjectMeta, map[string]string{}),
+					resource.TestCheckResourceAttr("kubernetes_limit_range.test", "metadata.0.name", name),
+					resource.TestCheckResourceAttrSet("kubernetes_limit_range.test", "metadata.0.generation"),
+					resource.TestCheckResourceAttrSet("kubernetes_limit_range.test", "metadata.0.resource_version"),
+					resource.TestCheckResourceAttrSet("kubernetes_limit_range.test", "metadata.0.self_link"),
+					resource.TestCheckResourceAttrSet("kubernetes_limit_range.test", "metadata.0.uid"),
+					resource.TestCheckResourceAttr("kubernetes_limit_range.test", "spec.#", "0"),
 				),
 			},
 		},
@@ -248,9 +278,10 @@ func TestAccKubernetesLimitRange_importBasic(t *testing.T) {
 				Config: testAccKubernetesLimitRangeConfig_basic(name),
 			},
 			{
-				ResourceName:      resourceName,
-				ImportState:       true,
-				ImportStateVerify: true,
+				ResourceName:            resourceName,
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"metadata.0.resource_version"},
 			},
 		},
 	})
@@ -263,7 +294,12 @@ func testAccCheckKubernetesLimitRangeDestroy(s *terraform.State) error {
 		if rs.Type != "kubernetes_limit_range" {
 			continue
 		}
-		namespace, name := idParts(rs.Primary.ID)
+
+		namespace, name, err := idParts(rs.Primary.ID)
+		if err != nil {
+			return err
+		}
+
 		resp, err := conn.CoreV1().LimitRanges(namespace).Get(name, meta_v1.GetOptions{})
 		if err == nil {
 			if resp.Namespace == namespace && resp.Name == name {
@@ -283,7 +319,12 @@ func testAccCheckKubernetesLimitRangeExists(n string, obj *api.LimitRange) resou
 		}
 
 		conn := testAccProvider.Meta().(*kubernetes.Clientset)
-		namespace, name := idParts(rs.Primary.ID)
+
+		namespace, name, err := idParts(rs.Primary.ID)
+		if err != nil {
+			return err
+		}
+
 		out, err := conn.CoreV1().LimitRanges(namespace).Get(name, meta_v1.GetOptions{})
 		if err != nil {
 			return err
@@ -292,6 +333,16 @@ func testAccCheckKubernetesLimitRangeExists(n string, obj *api.LimitRange) resou
 		*obj = *out
 		return nil
 	}
+}
+
+func testAccKubernetesLimitRangeConfig_empty(name string) string {
+	return fmt.Sprintf(`
+resource "kubernetes_limit_range" "test" {
+	metadata {
+		name = "%s"
+	}
+}
+`, name)
 }
 
 func testAccKubernetesLimitRangeConfig_basic(name string) string {

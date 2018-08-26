@@ -8,8 +8,8 @@ import (
 	"github.com/hashicorp/terraform/helper/resource"
 	"github.com/hashicorp/terraform/terraform"
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	api "k8s.io/kubernetes/pkg/api/v1"
-	kubernetes "k8s.io/kubernetes/pkg/client/clientset_generated/clientset"
+	kubernetes "k8s.io/client-go/kubernetes"
+	api "k8s.io/client-go/pkg/api/v1"
 )
 
 func TestAccKubernetesResourceQuota_basic(t *testing.T) {
@@ -190,9 +190,10 @@ func TestAccKubernetesResourceQuota_importBasic(t *testing.T) {
 				Config: testAccKubernetesResourceQuotaConfig_basic(name),
 			},
 			{
-				ResourceName:      resourceName,
-				ImportState:       true,
-				ImportStateVerify: true,
+				ResourceName:            resourceName,
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"metadata.0.resource_version"},
 			},
 		},
 	})
@@ -205,7 +206,12 @@ func testAccCheckKubernetesResourceQuotaDestroy(s *terraform.State) error {
 		if rs.Type != "kubernetes_resource_quota" {
 			continue
 		}
-		namespace, name := idParts(rs.Primary.ID)
+
+		namespace, name, err := idParts(rs.Primary.ID)
+		if err != nil {
+			return err
+		}
+
 		resp, err := conn.CoreV1().ResourceQuotas(namespace).Get(name, meta_v1.GetOptions{})
 		if err == nil {
 			if resp.Namespace == namespace && resp.Name == name {
@@ -225,7 +231,12 @@ func testAccCheckKubernetesResourceQuotaExists(n string, obj *api.ResourceQuota)
 		}
 
 		conn := testAccProvider.Meta().(*kubernetes.Clientset)
-		namespace, name := idParts(rs.Primary.ID)
+
+		namespace, name, err := idParts(rs.Primary.ID)
+		if err != nil {
+			return err
+		}
+
 		out, err := conn.CoreV1().ResourceQuotas(namespace).Get(name, meta_v1.GetOptions{})
 		if err != nil {
 			return err

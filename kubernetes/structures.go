@@ -9,12 +9,17 @@ import (
 	"github.com/hashicorp/terraform/helper/schema"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	api "k8s.io/kubernetes/pkg/api/v1"
+	api "k8s.io/client-go/pkg/api/v1"
 )
 
-func idParts(id string) (string, string) {
+func idParts(id string) (string, string, error) {
 	parts := strings.Split(id, "/")
-	return parts[0], parts[1]
+	if len(parts) != 2 {
+		err := fmt.Errorf("Unexpected ID format (%q), expected %q.", id, "namespace/name")
+		return "", "", err
+	}
+
+	return parts[0], parts[1], nil
 }
 
 func buildId(meta metav1.ObjectMeta) string {
@@ -63,6 +68,14 @@ func expandStringMap(m map[string]interface{}) map[string]string {
 	result := make(map[string]string)
 	for k, v := range m {
 		result[k] = v.(string)
+	}
+	return result
+}
+
+func expandStringMapToByteMap(m map[string]interface{}) map[string][]byte {
+	result := make(map[string][]byte)
+	for k, v := range m {
+		result[k] = []byte(v.(string))
 	}
 	return result
 }
@@ -366,6 +379,10 @@ func expandLimitRangeSpec(s []interface{}, isNew bool) (api.LimitRangeSpec, erro
 }
 
 func flattenLimitRangeSpec(in api.LimitRangeSpec) []interface{} {
+	if len(in.Limits) == 0 {
+		return []interface{}{}
+	}
+
 	out := make([]interface{}, 1)
 	limits := make([]interface{}, len(in.Limits), len(in.Limits))
 

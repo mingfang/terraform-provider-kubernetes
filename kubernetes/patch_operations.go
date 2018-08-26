@@ -12,6 +12,15 @@ func diffStringMap(pathPrefix string, oldV, newV map[string]interface{}) PatchOp
 
 	pathPrefix = strings.TrimRight(pathPrefix, "/")
 
+	// If old value was empty, just create the object
+	if len(oldV) == 0 {
+		ops = append(ops, &AddOperation{
+			Path:  pathPrefix,
+			Value: newV,
+		})
+		return ops
+	}
+
 	// This is suboptimal for adding whole new map from scratch
 	// or deleting the whole map, but it's actually intention.
 	// There may be some other map items managed outside of TF
@@ -21,7 +30,9 @@ func diffStringMap(pathPrefix string, oldV, newV map[string]interface{}) PatchOp
 		if _, ok := newV[k]; ok {
 			continue
 		}
-		ops = append(ops, &RemoveOperation{Path: pathPrefix + "/" + k})
+		ops = append(ops, &RemoveOperation{
+			Path: pathPrefix + "/" + escapeJsonPointer(k),
+		})
 	}
 
 	for k, v := range newV {
@@ -33,19 +44,27 @@ func diffStringMap(pathPrefix string, oldV, newV map[string]interface{}) PatchOp
 			}
 
 			ops = append(ops, &ReplaceOperation{
-				Path:  pathPrefix + "/" + k,
+				Path:  pathPrefix + "/" + escapeJsonPointer(k),
 				Value: newValue,
 			})
 			continue
 		}
 
 		ops = append(ops, &AddOperation{
-			Path:  pathPrefix + "/" + k,
+			Path:  pathPrefix + "/" + escapeJsonPointer(k),
 			Value: newValue,
 		})
 	}
 
 	return ops
+}
+
+// escapeJsonPointer escapes string per RFC 6901
+// so it can be used as path in JSON patch operations
+func escapeJsonPointer(path string) string {
+	path = strings.Replace(path, "~", "~0", -1)
+	path = strings.Replace(path, "/", "~1", -1)
+	return path
 }
 
 type PatchOperations []PatchOperation
