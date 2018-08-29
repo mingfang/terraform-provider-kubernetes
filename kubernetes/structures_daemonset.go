@@ -3,13 +3,13 @@ package kubernetes
 import (
 	"strconv"
 
+	apps "k8s.io/api/apps/v1"
+	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/kubernetes/pkg/api/v1"
-	"k8s.io/kubernetes/pkg/apis/extensions/v1beta1"
 )
 
-func flattenDaemonSetSpec(in v1beta1.DaemonSetSpec) ([]interface{}, error) {
+func flattenDaemonSetSpec(in apps.DaemonSetSpec) ([]interface{}, error) {
 	att := make(map[string]interface{})
 	att["min_ready_seconds"] = in.MinReadySeconds
 
@@ -24,7 +24,7 @@ func flattenDaemonSetSpec(in v1beta1.DaemonSetSpec) ([]interface{}, error) {
 	return []interface{}{att}, nil
 }
 
-func flattenDaemonSetStrategy(in v1beta1.DaemonSetUpdateStrategy) []interface{} {
+func flattenDaemonSetStrategy(in apps.DaemonSetUpdateStrategy) []interface{} {
 	att := make(map[string]interface{})
 	if in.Type != "" {
 		att["type"] = in.Type
@@ -35,7 +35,7 @@ func flattenDaemonSetStrategy(in v1beta1.DaemonSetUpdateStrategy) []interface{} 
 	return []interface{}{att}
 }
 
-func flattenDaemonSetStrategyRollingUpdate(in *v1beta1.RollingUpdateDaemonSet) []interface{} {
+func flattenDaemonSetStrategyRollingUpdate(in *apps.RollingUpdateDaemonSet) []interface{} {
 	att := make(map[string]interface{})
 	if in.MaxUnavailable != nil {
 		att["maxUnavailable"] = in.MaxUnavailable.String()
@@ -43,8 +43,8 @@ func flattenDaemonSetStrategyRollingUpdate(in *v1beta1.RollingUpdateDaemonSet) [
 	return []interface{}{att}
 }
 
-func expandDaemonSetSpec(deployment []interface{}) (v1beta1.DaemonSetSpec, error) {
-	obj := v1beta1.DaemonSetSpec{}
+func expandDaemonSetSpec(deployment []interface{}) (apps.DaemonSetSpec, error) {
+	obj := apps.DaemonSetSpec{}
 	if len(deployment) == 0 || deployment[0] == nil {
 		return obj, nil
 	}
@@ -70,8 +70,8 @@ func expandDaemonSetSpec(deployment []interface{}) (v1beta1.DaemonSetSpec, error
 	return obj, nil
 }
 
-func expandDaemonSetStrategy(p []interface{}) v1beta1.DaemonSetUpdateStrategy {
-	obj := v1beta1.DaemonSetUpdateStrategy{}
+func expandDaemonSetStrategy(p []interface{}) apps.DaemonSetUpdateStrategy {
+	obj := apps.DaemonSetUpdateStrategy{}
 
 	if len(p) == 0 || p[0] == nil {
 		return obj
@@ -79,7 +79,7 @@ func expandDaemonSetStrategy(p []interface{}) v1beta1.DaemonSetUpdateStrategy {
 	in := p[0].(map[string]interface{})
 
 	if v, ok := in["type"]; ok {
-		obj.Type = v1beta1.DaemonSetUpdateStrategyType(v.(string))
+		obj.Type = apps.DaemonSetUpdateStrategyType(v.(string))
 	}
 	if v, ok := in["rollingUpdate"]; ok {
 		obj.RollingUpdate = expandRollingUpdateDaemonSet(v.([]interface{}))
@@ -87,8 +87,8 @@ func expandDaemonSetStrategy(p []interface{}) v1beta1.DaemonSetUpdateStrategy {
 	return obj
 }
 
-func expandRollingUpdateDaemonSet(p []interface{}) *v1beta1.RollingUpdateDaemonSet {
-	obj := v1beta1.RollingUpdateDaemonSet{}
+func expandRollingUpdateDaemonSet(p []interface{}) *apps.RollingUpdateDaemonSet {
+	obj := apps.RollingUpdateDaemonSet{}
 	if len(p) == 0 || p[0] == nil {
 		return &obj
 	}

@@ -6,11 +6,11 @@ import (
 	"time"
 
 	"github.com/hashicorp/terraform/helper/schema"
+	apps "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	pkgApi "k8s.io/apimachinery/pkg/types"
-	"k8s.io/kubernetes/pkg/apis/extensions/v1beta1"
-	kubernetes "k8s.io/kubernetes/pkg/client/clientset_generated/clientset"
+	kubernetes "k8s.io/client-go/kubernetes"
 )
 
 func resourceKubernetesDaemonSet() *schema.Resource {
@@ -96,7 +96,7 @@ func resourceKubernetesDaemonSet() *schema.Resource {
 							Required:    true,
 							MaxItems:    1,
 							Elem: &schema.Resource{
-								Schema: podSpecFields(),
+								Schema: podSpecFields(true),
 							},
 						},
 					},
@@ -115,13 +115,13 @@ func resourceKubernetesDaemonSetCreate(d *schema.ResourceData, meta interface{})
 		return err
 	}
 
-	daemonset := v1beta1.DaemonSet{
+	daemonset := apps.DaemonSet{
 		ObjectMeta: metadata,
 		Spec:       spec,
 	}
 
 	log.Printf("[INFO] Creating new daemonset: %#v", daemonset)
-	out, err := conn.DaemonSets(metadata.Namespace).Create(&daemonset)
+	out, err := conn.Apps().DaemonSets(metadata.Namespace).Create(&daemonset)
 	if err != nil {
 		return fmt.Errorf("Failed to create daemonset: %s", err)
 	}
@@ -136,9 +136,9 @@ func resourceKubernetesDaemonSetCreate(d *schema.ResourceData, meta interface{})
 func resourceKubernetesDaemonSetRead(d *schema.ResourceData, meta interface{}) error {
 	conn := meta.(*kubernetes.Clientset)
 
-	namespace, name := idParts(d.Id())
+	namespace, name, _ := idParts(d.Id())
 	log.Printf("[INFO] Reading daemonset %s", name)
-	daemonset, err := conn.DaemonSets(namespace).Get(name, metav1.GetOptions{})
+	daemonset, err := conn.Apps().DaemonSets(namespace).Get(name, metav1.GetOptions{})
 	if err != nil {
 		log.Printf("[DEBUG] Received error: %#v", err)
 		return err
@@ -166,7 +166,7 @@ func resourceKubernetesDaemonSetRead(d *schema.ResourceData, meta interface{}) e
 func resourceKubernetesDaemonSetUpdate(d *schema.ResourceData, meta interface{}) error {
 	conn := meta.(*kubernetes.Clientset)
 
-	namespace, name := idParts(d.Id())
+	namespace, name, _ := idParts(d.Id())
 
 	ops := patchMetadata("metadata.0.", "/metadata/", d)
 
@@ -186,7 +186,7 @@ func resourceKubernetesDaemonSetUpdate(d *schema.ResourceData, meta interface{})
 		return fmt.Errorf("Failed to marshal update operations: %s", err)
 	}
 	log.Printf("[INFO] Updating daemonset %q: %v", name, string(data))
-	out, err := conn.DaemonSets(namespace).Patch(name, pkgApi.JSONPatchType, data)
+	out, err := conn.Apps().DaemonSets(namespace).Patch(name, pkgApi.JSONPatchType, data)
 	if err != nil {
 		return fmt.Errorf("Failed to update daemonset: %s", err)
 	}
@@ -198,11 +198,11 @@ func resourceKubernetesDaemonSetUpdate(d *schema.ResourceData, meta interface{})
 func resourceKubernetesDaemonSetDelete(d *schema.ResourceData, meta interface{}) error {
 	conn := meta.(*kubernetes.Clientset)
 
-	namespace, name := idParts(d.Id())
+	namespace, name, _ := idParts(d.Id())
 	log.Printf("[INFO] Deleting daemonset: %#v", name)
 
 	falseVar := false
-	conn.DaemonSets(namespace).Delete(name, &metav1.DeleteOptions{OrphanDependents: &falseVar})
+	conn.Apps().DaemonSets(namespace).Delete(name, &metav1.DeleteOptions{OrphanDependents: &falseVar})
 
 	log.Printf("[INFO] Replication controller %s deleted", name)
 
@@ -213,9 +213,9 @@ func resourceKubernetesDaemonSetDelete(d *schema.ResourceData, meta interface{})
 func resourceKubernetesDaemonSetExists(d *schema.ResourceData, meta interface{}) (bool, error) {
 	conn := meta.(*kubernetes.Clientset)
 
-	namespace, name := idParts(d.Id())
+	namespace, name, _ := idParts(d.Id())
 	log.Printf("[INFO] Checking daemonset %s", name)
-	_, err := conn.DaemonSets(namespace).Get(name, metav1.GetOptions{})
+	_, err := conn.Apps().DaemonSets(namespace).Get(name, metav1.GetOptions{})
 	if err != nil {
 		if statusErr, ok := err.(*errors.StatusError); ok && statusErr.ErrStatus.Code == 404 {
 			return false, nil
