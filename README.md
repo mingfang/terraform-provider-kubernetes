@@ -1,3 +1,6 @@
+## This fork is no longer maintained.  
+### I have a completely new Terraform Provider For Kubernetes here https://github.com/mingfang/terraform-provider-k8s
+
 # Terraform Provider
 
 - Website: https://www.terraform.io
